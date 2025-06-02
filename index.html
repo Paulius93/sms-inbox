@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Simple SMS Inbox</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 2em auto; }
+    .message { border-bottom: 1px solid #ccc; padding: 0.5em 0; }
+    .inbound { color: green; }
+    .outbound { color: blue; }
+  </style>
+</head>
+<body>
+  <h1>SMS Inbox</h1>
+  <div id="messages"></div>
+
+  <h2>Send SMS</h2>
+  <input id="to" type="text" placeholder="To (phone number)" style="width: 100%; padding: 8px;" /><br/><br/>
+  <textarea id="text" placeholder="Your message" style="width: 100%; padding: 8px;"></textarea><br/><br/>
+  <button onclick="sendSms()">Send</button>
+
+  <script>
+    const backendUrl = 'https://script.google.com/macros/s/AKfycbzwCJNv09OP8-7fDFsoJLxTinuqIKdFbGVpUtK9hqk21_ofj2MinZXbH5gTXeedLwofmw/exec'; // Paste your Apps Script URL here
+
+    async function loadMessages() {
+      const res = await fetch(backendUrl);
+      const messages = await res.json();
+      const container = document.getElementById('messages');
+      container.innerHTML = '';
+
+      messages.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = 'message ' + (msg.direction === 'inbound' ? 'inbound' : 'outbound');
+        div.textContent = `[${msg.timestamp}] ${msg.direction.toUpperCase()} From: ${msg.from} To: ${msg.to} — ${msg.text}`;
+        container.appendChild(div);
+      });
+    }
+
+    async function sendSms() {
+      const to = document.getElementById('to').value.trim();
+      const text = document.getElementById('text').value.trim();
+      if (!to || !text) {
+        alert('Please enter both To and message.');
+        return;
+      }
+
+      const res = await fetch(backendUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, text })
+      });
+
+      const result = await res.json();
+      alert('Message sent! Response: ' + JSON.stringify(result));
+      document.getElementById('to').value = '';
+      document.getElementById('text').value = '';
+      loadMessages();
+    }
+
+    loadMessages();
+  </script>
+</body>
+</html>
