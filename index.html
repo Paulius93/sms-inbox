@@ -1,62 +1,243 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Simple SMS Inbox</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 600px; margin: 2em auto; }
-    .message { border-bottom: 1px solid #ccc; padding: 0.5em 0; }
-    .inbound { color: green; }
-    .outbound { color: blue; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SMS Chat UI</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0; padding: 0;
+    display: flex; height: 100vh;
+  }
+  #contacts {
+    width: 25%;
+    border-right: 1px solid #ddd;
+    overflow-y: auto;
+    background: #f9f9f9;
+  }
+  #contacts h2 {
+    margin: 0; padding: 1rem; background: #333; color: white;
+  }
+  #contacts ul {
+    list-style: none;
+    margin: 0; padding: 0;
+  }
+  #contacts li {
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+  }
+  #contacts li.selected {
+    background: #cce5ff;
+  }
+  #chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  #chatHeader {
+    padding: 1rem;
+    background: #007bff;
+    color: white;
+    font-weight: bold;
+  }
+  #messages {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+    background: #eee;
+  }
+  .message {
+    margin-bottom: 1rem;
+    max-width: 70%;
+    padding: 0.5rem 1rem;
+    border-radius: 15px;
+    clear: both;
+  }
+  .message.from {
+    background: #007bff;
+    color: white;
+    float: right;
+    text-align: right;
+  }
+  .message.to {
+    background: #ddd;
+    float: left;
+    color: #000;
+  }
+  #inputArea {
+    display: flex;
+    padding: 1rem;
+    border-top: 1px solid #ccc;
+  }
+  #inputArea input[type="text"] {
+    flex: 1;
+    padding: 0.5rem;
+    font-size: 1rem;
+  }
+  #inputArea button {
+    margin-left: 0.5rem;
+    padding: 0 1rem;
+    font-size: 1rem;
+  }
+  #loading {
+    text-align: center;
+    color: #666;
+    padding: 1rem;
+  }
+</style>
 </head>
 <body>
-  <h1>SMS Inbox</h1>
-  <div id="messages"></div>
 
-  <h2>Send SMS</h2>
-  <input id="to" type="text" placeholder="To (phone number)" style="width: 100%; padding: 8px;" /><br/><br/>
-  <textarea id="text" placeholder="Your message" style="width: 100%; padding: 8px;"></textarea><br/><br/>
-  <button onclick="sendSms()">Send</button>
+<div id="contacts">
+  <h2>Contacts</h2>
+  <ul id="contactsList">
+    <li>Loading...</li>
+  </ul>
+</div>
 
-  <script>
-    const backendUrl = 'https://script.google.com/macros/s/AKfycbzwCJNv09OP8-7fDFsoJLxTinuqIKdFbGVpUtK9hqk21_ofj2MinZXbH5gTXeedLwofmw/exec'; // Paste your Apps Script URL here
+<div id="chat">
+  <div id="chatHeader">Select a contact</div>
+  <div id="messages">
+    <div id="loading">No conversation selected.</div>
+  </div>
+  <div id="inputArea" style="display:none;">
+    <input type="text" id="messageInput" placeholder="Type your message" autocomplete="off"/>
+    <button id="sendBtn">Send</button>
+  </div>
+</div>
 
-    async function loadMessages() {
-      const res = await fetch(backendUrl);
-      const messages = await res.json();
-      const container = document.getElementById('messages');
-      container.innerHTML = '';
+<script>
+  const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbzwCJNv09OP8-7fDFsoJLxTinuqIKdFbGVpUtK9hqk21_ofj2MinZXbH5gTXeedLwofmw/exec';
 
-      messages.forEach(msg => {
-        const div = document.createElement('div');
-        div.className = 'message ' + (msg.direction === 'inbound' ? 'inbound' : 'outbound');
-        div.textContent = `[${msg.timestamp}] ${msg.direction.toUpperCase()} From: ${msg.from} To: ${msg.to} — ${msg.text}`;
-        container.appendChild(div);
-      });
-    }
+  let contacts = [];
+  let messages = {};
+  let currentContact = null;
 
-    async function sendSms() {
-      const to = document.getElementById('to').value.trim();
-      const text = document.getElementById('text').value.trim();
-      if (!to || !text) {
-        alert('Please enter both To and message.');
+  const contactsListEl = document.getElementById('contactsList');
+  const chatHeaderEl = document.getElementById('chatHeader');
+  const messagesEl = document.getElementById('messages');
+  const inputAreaEl = document.getElementById('inputArea');
+  const messageInputEl = document.getElementById('messageInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const loadingEl = document.getElementById('loading');
+
+  // Load contacts and messages from Apps Script
+  async function loadConversations() {
+    loadingEl.textContent = 'Loading conversations...';
+    try {
+      const res = await fetch(appsScriptUrl + '?action=getMessages');
+      const data = await res.json();
+
+      // Assuming data format:
+      // { conversations: { phoneNumber1: [ {from, to, text, timestamp}, ... ], ... } }
+      messages = data.conversations || {};
+
+      // Extract contacts (phone numbers)
+      contacts = Object.keys(messages);
+
+      if (contacts.length === 0) {
+        contactsListEl.innerHTML = '<li>No contacts found</li>';
+        loadingEl.textContent = 'No conversations available.';
         return;
       }
 
-      const res = await fetch(backendUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, text })
-      });
-
-      const result = await res.json();
-      alert('Message sent! Response: ' + JSON.stringify(result));
-      document.getElementById('to').value = '';
-      document.getElementById('text').value = '';
-      loadMessages();
+      renderContacts();
+      selectContact(contacts[0]);
+    } catch (e) {
+      loadingEl.textContent = 'Failed to load conversations.';
+      console.error(e);
     }
+  }
 
-    loadMessages();
-  </script>
+  function renderContacts() {
+    contactsListEl.innerHTML = '';
+    contacts.forEach(contact => {
+      const li = document.createElement('li');
+      li.textContent = contact;
+      li.onclick = () => selectContact(contact);
+      if (contact === currentContact) li.classList.add('selected');
+      contactsListEl.appendChild(li);
+    });
+  }
+
+  function selectContact(contact) {
+    currentContact = contact;
+    chatHeaderEl.textContent = 'Chat with ' + contact;
+    renderContacts();
+    renderMessages();
+    inputAreaEl.style.display = 'flex';
+    loadingEl.style.display = 'none';
+  }
+
+  function renderMessages() {
+    messagesEl.innerHTML = '';
+    if (!messages[currentContact] || messages[currentContact].length === 0) {
+      messagesEl.innerHTML = '<div>No messages in this conversation.</div>';
+      return;
+    }
+    messages[currentContact].forEach(msg => {
+      const div = document.createElement('div');
+      div.classList.add('message');
+      if (msg.from === currentContact) {
+        div.classList.add('to'); // received message
+      } else {
+        div.classList.add('from'); // sent message
+      }
+      div.textContent = msg.text;
+      messagesEl.appendChild(div);
+    });
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  async function sendMessage() {
+    const text = messageInputEl.value.trim();
+    if (!text || !currentContact) return;
+
+    // Optimistically show message
+    if (!messages[currentContact]) messages[currentContact] = [];
+    messages[currentContact].push({
+      from: 'me',
+      to: currentContact,
+      text: text,
+      timestamp: new Date().toISOString()
+    });
+    renderMessages();
+    messageInputEl.value = '';
+
+    // Call Apps Script to send message
+    try {
+      const res = await fetch(appsScriptUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          action: 'sendMessage',
+          to: currentContact,
+          text: text
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        console.log('Message sent successfully');
+      } else {
+        alert('Failed to send message: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+      alert('Error sending message: ' + e.message);
+      console.error(e);
+    }
+  }
+
+  sendBtn.onclick = sendMessage;
+  messageInputEl.onkeydown = e => {
+    if (e.key === 'Enter') sendMessage();
+  };
+
+  // Initial load
+  loadConversations();
+
+</script>
+
 </body>
 </html>
